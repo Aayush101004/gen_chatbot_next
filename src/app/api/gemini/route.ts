@@ -1,19 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Define the structure of a message in the chat history
 interface ChatMessage {
     role: 'user' | 'assistant' | 'system';
     content: string;
 }
 
 export async function POST(request: NextRequest) {
+
     try {
         const { history }: { history: ChatMessage[] } = await request.json();
+
         const apiKey = process.env.GEMINI_API_KEY;
         const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
-
+        
         if (!apiKey) {
-            return NextResponse.json({ error: 'Gemini API key not configured.' }, { status: 500 });
+            return NextResponse.json({ error: 'Gemini API key not configured on server.' }, { status: 500 });
         }
 
         // Format the history for the Gemini API
@@ -28,15 +29,18 @@ export async function POST(request: NextRequest) {
             body: JSON.stringify({ contents }),
         });
 
+        const responseText = await response.text(); // Get response as text to avoid JSON parsing errors
+
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error?.message || 'An unknown API error occurred.');
+            // Throw an error with the detailed response from Google
+            throw new Error(`Google API Error: ${response.status} ${response.statusText} | ${responseText}`);
         }
 
-        const result = await response.json();
+        const result = JSON.parse(responseText); // Parse JSON only if response.ok
         return NextResponse.json(result);
+
     } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+        const errorMessage = error instanceof Error ? error.message : 'An unexpected server error occurred.';
         return NextResponse.json({ error: errorMessage }, { status: 500 });
     }
 }

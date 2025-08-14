@@ -1,10 +1,14 @@
-// --- src/app/components/SendIcon.tsx ---
+import Image from 'next/image';
 import React from 'react';
+import sendAvatar from '../../../public/send.png'; // Import the image
 
 const SendIcon: React.FC = () => (
-    <svg width="24" height="24" viewBox="0 0 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-white">
-        <path d="M2.01 21L23 12L2.01 3L2 10L17 12L2 14L2.01 21Z" fill="currentColor" />
-    </svg>
+    <Image
+        src={sendAvatar}
+        alt="Send Avatar"
+        width={27}
+        height={27}
+    />
 );
 
 export default SendIcon;
