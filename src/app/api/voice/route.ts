@@ -1,5 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+async function fetchWithRetry(url: string, options: RequestInit, retries = 3) {
+    for (let attempt = 0; attempt < retries; attempt++) {
+        const response = await fetch(url, options);
+        if (response.status === 503) {
+            const delay = Math.pow(2, attempt) * 1000;
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+        }
+        return response;
+    }
+    throw new Error(`The model is still overloaded after ${retries} attempts.`);
+}
+
 export async function POST(request: NextRequest) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -14,10 +27,10 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'No audio file found.' }, { status: 400 });
         }
 
-        // Convert the audio file to a base64 string
         const audioBuffer = await audioFile.arrayBuffer();
         const audioBase64 = Buffer.from(audioBuffer).toString('base64');
     
+        // Using the flash model as requested
         const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
 
         const payload = {
@@ -25,22 +38,19 @@ export async function POST(request: NextRequest) {
                 {
                     parts: [
                         { text: "Transcribe this audio:" },
-                        {
-                            inline_data: {
-                                mime_type: audioFile.type,
-                                data: audioBase64,
-                            },
-                        },
+                        { inline_data: { mime_type: audioFile.type, data: audioBase64 } },
                     ],
                 },
             ],
         };
 
-        const response = await fetch(API_URL, {
+        const fetchOptions: RequestInit = {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
-        });
+        };
+
+        const response = await fetchWithRetry(API_URL, fetchOptions);
 
         if (!response.ok) {
             const errorData = await response.json();
@@ -48,13 +58,9 @@ export async function POST(request: NextRequest) {
         }
 
         const result = await response.json();
-
-        // **FIX**: Check for a valid transcription and provide a specific error if it's missing.
         const transcription = result.candidates?.[0]?.content?.parts?.[0]?.text;
 
         if (!transcription) {
-            // This helps debug issues with silent audio or safety blocks.
-            console.error("Gemini transcription failed. Full response:", JSON.stringify(result, null, 2));
             throw new Error('Could not understand the audio. Please try speaking again clearly.');
         }
 
