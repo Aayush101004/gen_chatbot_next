@@ -6,7 +6,7 @@ const PaperClipIcon: React.FC = () => (
     <Image
         src={uploadAvatar}
         alt="Upload Avatar"
-        width={27}
+        width={28}
         height={27}
     />
 );
