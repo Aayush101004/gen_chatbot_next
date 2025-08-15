@@ -7,7 +7,7 @@ import MicIcon from './components/MicIcon';
 import SendIcon from './components/SendIcon';
 import UserIcon from './components/UserIcon';
 // --- NEW: Import the PaperclipIcon ---
-import PaperclipIcon from './components/PaperclipIcon';
+import PaperClipIcon from './components/PaperClipIcon';
 
 // --- UPDATED: ChatMessage interface to include optional file info ---
 interface ChatMessage {
@@ -293,7 +293,7 @@ export default function Home(): React.ReactElement {
             className="p-3 bg-indigo-600 rounded-lg disabled:bg-indigo-300 hover:bg-indigo-700 transition-colors duration-200"
             aria-label="Attach file"
           >
-            <PaperclipIcon />
+            <PaperClipIcon />
           </button>
           <textarea
             value={userInput}
