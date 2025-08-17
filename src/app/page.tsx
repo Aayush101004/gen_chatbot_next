@@ -4,12 +4,10 @@ import { ChangeEvent, useEffect, useRef, useState } from 'react';
 import BotIcon from './components/BotIcon';
 import MarkdownRenderer from './components/MarkdownRenderer';
 import MicIcon from './components/MicIcon';
+import PaperClipIcon from './components/PaperClipIcon';
 import SendIcon from './components/SendIcon';
 import UserIcon from './components/UserIcon';
-// --- NEW: Import the PaperclipIcon ---
-import PaperClipIcon from './components/PaperClipIcon';
 
-// --- UPDATED: ChatMessage interface to include optional file info ---
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
@@ -25,11 +23,9 @@ export default function Home(): React.ReactElement {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // --- NEW: State for file management ---
   const [file, setFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // State for voice recording
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -39,11 +35,10 @@ export default function Home(): React.ReactElement {
   }, [messages]);
 
   useEffect(() => {
-    setMessages([{ role: 'assistant', content: 'Hello! I am **Gem**, your secure AI assistant. How can I help you today?' }]);
+    setMessages([{ role: 'assistant', content: 'Hello! I am **Gem**, your secure AI assistant. I can fetch news, analyze files, and much more. How can I help you today?' }]);
   }, []);
 
   const fetchNews = async (topic: string | null): Promise<string> => {
-    // This function remains the same
     try {
       const response = await fetch(`/api/news?topic=${topic || ''}`);
       if (!response.ok) {
@@ -66,7 +61,6 @@ export default function Home(): React.ReactElement {
   };
 
   const getNewsTopic = (query: string): string | null => {
-    // This function remains the same
     const topics = ['sports', 'technology', 'business', 'entertainment', 'health', 'science', 'world'];
     const lowerCaseQuery = query.toLowerCase();
     for (const topic of topics) {
@@ -74,73 +68,91 @@ export default function Home(): React.ReactElement {
     }
     return null;
   };
+  
+  const getFriendlyFileType = (mimeType: string): string => {
+    if (!mimeType) return 'File';
+    if (mimeType.includes('spreadsheetml') || mimeType.includes('ms-excel')) return 'Excel Document';
+    if (mimeType.includes('wordprocessingml') || mimeType.includes('msword')) return 'Word Document';
+    if (mimeType.includes('pdf')) return 'PDF Document';
+    if (mimeType.startsWith('image/')) return 'Image';
+    if (mimeType.startsWith('text/')) return 'Text File';
+    return 'File';
+  };
 
-  // --- UPDATED: handleSendMessage to include file logic ---
   const handleSendMessage = async () => {
-    if (!userInput.trim() || isLoading) return;
+    if ((!userInput.trim() && !file) || isLoading) return;
 
-    // Create the new message with optional file info
     const newMessage: ChatMessage = {
       role: 'user',
       content: userInput,
     };
     if (file) {
-      newMessage.fileInfo = { name: file.name, type: file.type };
+      newMessage.fileInfo = { name: file.name, type: getFriendlyFileType(file.type) };
     }
 
     const newMessages: ChatMessage[] = [...messages, newMessage];
     setMessages(newMessages);
 
-    // --- NEW: Reset file state after sending ---
     const currentFile = file;
-    setFile(null);
-    if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-    }
-
     const currentInput = userInput;
+    
+    setFile(null);
     setUserInput('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
     setIsLoading(true);
 
     let botResponse = "";
 
-    // Here you would add logic to handle the file upload to the backend
-    // For now, we'll just mock a response about the file
-    if (currentFile) {
-        botResponse = `I see you've uploaded **${currentFile.name}**. You said: "${currentInput}". How can I help with this file?`;
-    } else {
-        const newsKeywords = ['news', 'headlines', 'latest', 'current events'];
-        const isNewsRequest = newsKeywords.some(keyword => currentInput.toLowerCase().includes(keyword));
+    try {
+        if (currentFile) {
+            const formData = new FormData();
+            formData.append('file', currentFile);
+            formData.append('prompt', currentInput || 'Analyze this file.');
 
-        if (isNewsRequest) {
-          const topic = getNewsTopic(currentInput);
-          botResponse = await fetchNews(topic);
-        } else {
-          try {
-            const history = newMessages.filter(m => m.role !== 'system').slice(-10);
-            
-            const response = await fetch(`/api/gemini`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ history }),
+            const response = await fetch('/api/analyze', {
+                method: 'POST',
+                body: formData,
             });
 
-            if (!response.ok) {
-              const errorData = await response.json();
-              throw new Error(errorData.error || "An unknown API error occurred.");
-            }
             const result = await response.json();
-            if (!result.candidates?.length || !result.candidates[0].content) {
-              throw new Error("The model returned an empty or blocked response.");
+            if (!response.ok) {
+                throw new Error(result.error || 'File analysis failed.');
             }
-            botResponse = result.candidates[0].content.parts[0].text.trim();
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            botResponse = `Error: ${errorMessage}`;
-          }
-        }
-    }
+            botResponse = result.analysis;
 
+        } else {
+            const lowerCaseInput = currentInput.toLowerCase();
+            const newsKeywords = ['news', 'headlines', 'latest', 'current events'];
+            const isNewsRequest = newsKeywords.some(keyword => lowerCaseInput.includes(keyword));
+
+            if (isNewsRequest) {
+                const topic = getNewsTopic(currentInput);
+                botResponse = await fetchNews(topic);
+            } else {
+                const history = newMessages.filter(m => m.role !== 'system').slice(-10);
+                const response = await fetch(`/api/gemini`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ history }),
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || "An unknown API error occurred.");
+                }
+                const result = await response.json();
+                if (!result.candidates?.length || !result.candidates[0].content) {
+                    throw new Error("The model returned an empty or blocked response.");
+                }
+                botResponse = result.candidates[0].content.parts[0].text.trim();
+            }
+        }
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+        botResponse = `Error: ${errorMessage}`;
+    }
 
     setMessages(prev => [...prev, { role: 'assistant', content: botResponse }]);
     setIsLoading(false);
@@ -154,7 +166,6 @@ export default function Home(): React.ReactElement {
   };
 
   const handleVoiceRecording = async () => {
-    // This function remains the same
     if (isRecording) {
       mediaRecorderRef.current?.stop();
       setIsRecording(false);
@@ -210,7 +221,6 @@ export default function Home(): React.ReactElement {
     }
   };
 
-  // --- NEW: Handler for file selection and removal ---
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
         setFile(e.target.files[0]);
@@ -235,7 +245,6 @@ export default function Home(): React.ReactElement {
             <div key={index} className={`flex items-start gap-4 ${msg.role === 'user' ? 'justify-end' : ''}`}>
               {msg.role === 'assistant' && <BotIcon />}
               <div className={`max-w-xl p-4 rounded-2xl shadow-sm ${msg.role === 'assistant' ? 'bg-white text-slate-800 rounded-tl-none' : 'bg-indigo-500 text-white rounded-br-none'}`}>
-                {/* --- UPDATED: Display file info above the user's message --- */}
                 {msg.fileInfo && (
                     <div className="mb-2 p-2 border border-indigo-200 bg-indigo-100 text-indigo-800 rounded-lg text-sm">
                         <p className="font-bold truncate">{msg.fileInfo.name}</p>
@@ -263,12 +272,11 @@ export default function Home(): React.ReactElement {
         </div>
       </main>
       <footer className="bg-white border-t p-4">
-        {/* --- NEW: Display selected file info above the text area --- */}
         {file && (
             <div className="max-w-2xl mx-auto mb-2 flex justify-between items-center p-2 bg-slate-200 rounded-lg text-sm">
                 <div className="truncate">
                     <p className="font-bold text-slate-700 truncate">{file.name}</p>
-                    <p className="text-xs text-slate-500">{file.type}</p>
+                    <p className="text-xs text-slate-500">{getFriendlyFileType(file.type)}</p>
                 </div>
                 <button 
                     onClick={handleRemoveFile} 
@@ -280,7 +288,6 @@ export default function Home(): React.ReactElement {
             </div>
         )}
         <div className="flex items-center gap-3 max-w-2xl mx-auto">
-          {/* --- UPDATED: Added upload button and hidden file input --- */}
           <input 
             type="file" 
             ref={fileInputRef} 
@@ -289,7 +296,7 @@ export default function Home(): React.ReactElement {
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            disabled={isLoading || !!file} // Disable if a file is already selected
+            disabled={isLoading || !!file}
             className="p-3 bg-indigo-600 rounded-lg disabled:bg-indigo-300 hover:bg-indigo-700 transition-colors duration-200"
             aria-label="Attach file"
           >
@@ -313,7 +320,7 @@ export default function Home(): React.ReactElement {
           </button>
           <button
             onClick={handleSendMessage}
-            disabled={isLoading || !userInput.trim()}
+            disabled={isLoading || (!userInput.trim() && !file)}
             className="p-3 bg-indigo-600 rounded-lg disabled:bg-indigo-300 hover:bg-indigo-700 transition-colors duration-200"
           >
             <SendIcon />
