@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AI CHATBOT",
+  title: "PurpleBot",
   description: "Created by Aayush Khanna",
 };
 

@@ -7,15 +7,13 @@ interface MarkdownRendererProps {
 }
 
 const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
+    // This function for handling bold/links within a line is correct and remains unchanged
     const renderLineContent = (line: string): (string | JSX.Element)[] => {
-        // Regex to find markdown links: [text](url)
         const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
-        // Regex to find bold text: **text**
         const boldRegex = /\*\*([^*]+)\*\*/g;
 
         let elements: (string | JSX.Element)[] = [line];
 
-        // Function to apply a regex transformation to text parts of an array
         const applyRegex = (
             arr: (string | JSX.Element)[],
             regex: RegExp,
@@ -23,11 +21,9 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
         ) => {
             return arr.flatMap((part) => {
                 if (typeof part !== 'string') return [part];
-
                 const newParts: (string | JSX.Element)[] = [];
                 let lastIndex = 0;
                 let match;
-
                 while ((match = regex.exec(part)) !== null) {
                     if (match.index > lastIndex) {
                         newParts.push(part.substring(lastIndex, match.index));
@@ -35,23 +31,19 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
                     newParts.push(transform(match));
                     lastIndex = match.index + match[0].length;
                 }
-
                 if (lastIndex < part.length) {
                     newParts.push(part.substring(lastIndex));
                 }
-
                 return newParts;
             });
         };
 
-        // First, process links
         elements = applyRegex(elements, linkRegex, (match) => (
             <a key={match[2] + match.index} href={match[2]} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline hover:text-blue-800">
                 {match[1]}
             </a>
         ));
 
-        // Then, process bold text on the remaining string parts
         elements = applyRegex(elements, boldRegex, (match) => (
             <strong key={match.index}>{match[1]}</strong>
         ));
@@ -59,60 +51,77 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
         return elements;
     };
 
+    // --- REWRITTEN LOGIC FOR LIST HANDLING STARTS HERE ---
+
     const lines = content.split('\n');
-    const elements: JSX.Element[] = [];
-    const listStack: { type: 'ul' | 'ol'; items: JSX.Element[]; indent: number; className: string }[] = [];
+    const rootElements: JSX.Element[] = [];
+    const listStack: { type: 'ul' | 'ol'; items: JSX.Element[]; indent: number }[] = [];
+
+    // Regex to capture indentation, list marker (*, -, +, or 1.), and content
+    const listItemRegex = /^(\s*)([\*\-\+]|\d+\.)\s+(.*)/;
+
+    const closeLists = (targetIndent: number) => {
+        while (listStack.length > 0 && listStack[listStack.length - 1].indent >= targetIndent) {
+            const finishedList = listStack.pop()!;
+            const ListTag = finishedList.type;
+            const listElement = (
+                <ListTag key={`list-${rootElements.length}`} className={`${finishedList.type === 'ul' ? 'list-disc' : 'list-decimal'} list-inside my-1 ml-4`}>
+                    {finishedList.items}
+                </ListTag>
+            );
+
+            if (listStack.length > 0) {
+                // This was a nested list, so add it as an `li` to its parent
+                const parentList = listStack[listStack.length - 1];
+                const lastItem = parentList.items[parentList.items.length - 1];
+                // Append the nested list to the last list item of the parent
+                parentList.items[parentList.items.length - 1] = React.cloneElement(lastItem, {}, lastItem.props.children, listElement);
+
+            } else {
+                // This was a top-level list
+                rootElements.push(listElement);
+            }
+        }
+    };
+
 
     lines.forEach((line, index) => {
-        const trimmedLine = line.trim();
-        if (!trimmedLine) {
-            while (listStack.length > 0) {
-                const finishedList = listStack.pop()!;
-                const ListTag = finishedList.type;
-                elements.push(<ListTag key={`list-${index}-${listStack.length}`} className={finishedList.className}>{finishedList.items}</ListTag>);
-            }
-            return;
-        }
+        const match = line.match(listItemRegex);
 
-        const indentMatch = line.match(/^(\s*)/);
-        const indent = indentMatch ? indentMatch[0].length : 0;
+        if (match) {
+            const indent = match[1].length;
+            const marker = match[2];
+            const itemContent = match[3];
 
-        if (trimmedLine.startsWith('* ')) {
-            const listItemContent = trimmedLine.substring(2);
-            const newItem = <li key={index}>{renderLineContent(listItemContent)}</li>;
+            // Determine if it's an ordered (ol) or unordered (ul) list
+            const listType = /\d/.test(marker) ? 'ol' : 'ul';
 
-            while (listStack.length > 0 && indent < listStack[listStack.length - 1].indent) {
-                const finishedList = listStack.pop()!;
-                const ListTag = finishedList.type;
-                elements.push(<ListTag key={`list-${index}-${listStack.length}`} className={finishedList.className}>{finishedList.items}</ListTag>);
+            closeLists(indent);
+
+            const currentList = listStack.length > 0 ? listStack[listStack.length - 1] : null;
+
+            // Start a new list if we're deeper, or if the type changes (e.g., from ul to ol)
+            if (!currentList || indent > currentList.indent || listType !== currentList.type) {
+                listStack.push({ type: listType, items: [], indent });
             }
 
-            if (listStack.length === 0 || indent > listStack[listStack.length - 1].indent) {
-                const listStyles = ['list-disc', 'list-decimal', 'list-[lower-alpha]'];
-                const listLevel = listStack.length;
-                const ListTag = listLevel === 0 ? 'ul' : 'ol';
-                const listClass = `${listStyles[listLevel % listStyles.length]} list-inside my-1 ml-4`;
-                listStack.push({ type: ListTag, items: [newItem], indent: indent, className: listClass });
-            } else {
-                listStack[listStack.length - 1].items.push(newItem);
-            }
+            // Add the new item to the current list
+            const newItem = <li key={index}>{renderLineContent(itemContent)}</li>;
+            listStack[listStack.length - 1].items.push(newItem);
+
         } else {
-            while (listStack.length > 0) {
-                const finishedList = listStack.pop()!;
-                const ListTag = finishedList.type;
-                elements.push(<ListTag key={`list-${index}-${listStack.length}`} className={finishedList.className}>{finishedList.items}</ListTag>);
+            // This line is not a list item, so close any open lists
+            closeLists(0);
+            if (line.trim()) {
+                rootElements.push(<p key={index} className="whitespace-pre-wrap my-2">{renderLineContent(line)}</p>);
             }
-            elements.push(<p key={index} className="whitespace-pre-wrap">{renderLineContent(trimmedLine)}</p>);
         }
     });
 
-    while (listStack.length > 0) {
-        const finishedList = listStack.pop()!;
-        const ListTag = finishedList.type;
-        elements.push(<ListTag key={`list-end-${listStack.length}`} className={finishedList.className}>{finishedList.items}</ListTag>);
-    }
+    // Close any remaining lists at the end of the content
+    closeLists(0);
 
-    return <>{elements}</>;
+    return <>{rootElements}</>;
 };
 
 export default MarkdownRenderer;
