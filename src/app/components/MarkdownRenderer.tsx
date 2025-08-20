@@ -1,4 +1,3 @@
-// --- src/app/components/MarkdownRenderer.tsx ---
 import type { JSX } from 'react';
 import React from 'react';
 
@@ -51,66 +50,57 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
         return elements;
     };
 
-    // --- REWRITTEN LOGIC FOR LIST HANDLING STARTS HERE ---
+    // --- SIMPLIFIED LOGIC FOR LIST HANDLING ---
 
     const lines = content.split('\n');
     const rootElements: JSX.Element[] = [];
-    const listStack: { type: 'ul' | 'ol'; items: JSX.Element[]; indent: number }[] = [];
+    const listStack: { items: JSX.Element[]; indent: number }[] = [];
 
-    // Regex to capture indentation, list marker (*, -, +, or 1.), and content
+    // Regex now just captures indentation and content, ignoring the marker type
     const listItemRegex = /^(\s*)([\*\-\+]|\d+\.)\s+(.*)/;
 
     const closeLists = (targetIndent: number) => {
         while (listStack.length > 0 && listStack[listStack.length - 1].indent >= targetIndent) {
             const finishedList = listStack.pop()!;
-            const ListTag = finishedList.type;
+            // Always render a <ul> with list-disc style
             const listElement = (
-                <ListTag key={`list-${rootElements.length}`} className={`${finishedList.type === 'ul' ? 'list-disc' : 'list-decimal'} list-inside my-1 ml-4`}>
+                <ul key={`list-${rootElements.length}`} className="list-disc list-inside my-1 ml-4">
                     {finishedList.items}
-                </ListTag>
+                </ul>
             );
 
             if (listStack.length > 0) {
-                // This was a nested list, so add it as an `li` to its parent
                 const parentList = listStack[listStack.length - 1];
                 const lastItem = parentList.items[parentList.items.length - 1];
-                // Append the nested list to the last list item of the parent
-                parentList.items[parentList.items.length - 1] = React.cloneElement(lastItem, {}, lastItem.props.children, listElement);
-
+                const children = React.Children.toArray(lastItem.props.children);
+                children.push(listElement);
+                parentList.items[parentList.items.length - 1] = React.cloneElement(lastItem, {}, ...children);
             } else {
-                // This was a top-level list
                 rootElements.push(listElement);
             }
         }
     };
-
 
     lines.forEach((line, index) => {
         const match = line.match(listItemRegex);
 
         if (match) {
             const indent = match[1].length;
-            const marker = match[2];
             const itemContent = match[3];
-
-            // Determine if it's an ordered (ol) or unordered (ul) list
-            const listType = /\d/.test(marker) ? 'ol' : 'ul';
 
             closeLists(indent);
 
             const currentList = listStack.length > 0 ? listStack[listStack.length - 1] : null;
 
-            // Start a new list if we're deeper, or if the type changes (e.g., from ul to ol)
-            if (!currentList || indent > currentList.indent || listType !== currentList.type) {
-                listStack.push({ type: listType, items: [], indent });
+            // Start a new list only if indentation increases
+            if (!currentList || indent > currentList.indent) {
+                listStack.push({ items: [], indent });
             }
 
-            // Add the new item to the current list
             const newItem = <li key={index}>{renderLineContent(itemContent)}</li>;
             listStack[listStack.length - 1].items.push(newItem);
 
         } else {
-            // This line is not a list item, so close any open lists
             closeLists(0);
             if (line.trim()) {
                 rootElements.push(<p key={index} className="whitespace-pre-wrap my-2">{renderLineContent(line)}</p>);
@@ -118,7 +108,6 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
         }
     });
 
-    // Close any remaining lists at the end of the content
     closeLists(0);
 
     return <>{rootElements}</>;

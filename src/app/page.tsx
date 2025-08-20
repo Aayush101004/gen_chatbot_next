@@ -26,7 +26,7 @@ export default function Home(): React.ReactElement {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
-
+  
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
   const [loadingText, setLoadingText] = useState<string>('Processing');
@@ -62,16 +62,16 @@ export default function Home(): React.ReactElement {
       }
       return `I couldn't find any top headlines for "${topic || 'news'}" at the moment.`;
     } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        return 'Request was aborted.';
-      }
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      return `Error fetching news: ${errorMessage}`;
+        if (error instanceof Error && error.name === 'AbortError') {
+            return 'Request was aborted.';
+        }
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        return `Error fetching news: ${errorMessage}`;
     }
   };
 
   const getNewsTopic = (query: string): string | null => {
-    const topics = ['sports', 'technology', 'business', 'entertainment', 'health', 'science', 'world'];
+    const topics = ['sports', 'technology', 'tech', 'business', 'entertainment', 'health', 'science', 'world'];
     const lowerCaseQuery = query.toLowerCase();
     for (const topic of topics) {
       if (lowerCaseQuery.includes(topic)) return topic;
@@ -103,7 +103,7 @@ export default function Home(): React.ReactElement {
       newMessage.fileInfo = { name: file.name, type: getFriendlyFileType(file.type) };
     }
 
-    const newMessages: ChatMessage[] = [...messages, newMessage];
+    const newMessages = [...messages, newMessage];
     setMessages(newMessages);
 
     const currentFile = file;
@@ -115,7 +115,9 @@ export default function Home(): React.ReactElement {
       setLoadingText('Processing');
     }
 
+    // Clear the inputs from the UI immediately
     setUserInput('');
+    setFile(null); 
     setIsLoading(true);
 
     let botResponse = "";
@@ -147,7 +149,7 @@ export default function Home(): React.ReactElement {
           const topic = getNewsTopic(currentInput);
           botResponse = await fetchNews(topic, controller.signal);
         } else {
-          const history = newMessages.filter(m => m.role !== 'system').slice(-10);
+          const history = newMessages.filter(m => m.role !== 'system');
           const response = await fetch(`/api/gemini`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -166,33 +168,44 @@ export default function Home(): React.ReactElement {
           botResponse = result.candidates[0].content.parts[0].text.trim();
         }
       }
+      setMessages(prev => [...prev, { role: 'assistant', content: botResponse }]);
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        return;
+        setMessages(prev => [...prev, { role: 'assistant', content: "Response interrupted." }]);
+      } else {
+        const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+        setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${errorMessage}` }]);
       }
-      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
-      botResponse = `Error: ${errorMessage}`;
     } finally {
       setIsLoading(false);
       abortControllerRef.current = null;
     }
-
-    setMessages(prev => [...prev, { role: 'assistant', content: botResponse }]);
   };
 
   const handleStopGeneration = () => {
     if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
     }
-    setIsLoading(false);
-    setMessages(prev => [...prev, { role: 'assistant', content: "Response interrupted." }]);
   };
-
+  
   const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
+    }
+  };
+
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+        setFile(e.target.files[0]);
+    }
+  };
+
+  const handleRemoveFile = () => {
+    setFile(null);
+    if (fileInputRef.current) {
+        fileInputRef.current.value = '';
     }
   };
 
@@ -243,49 +256,32 @@ export default function Home(): React.ReactElement {
     }
   };
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setFile(e.target.files[0]);
-    }
-  };
-
-  const handleRemoveFile = () => {
-    setFile(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
   return (
     <div className={`flex flex-col h-screen font-sans ${theme === 'dark' ? 'bg-[#000000]' : 'bg-slate-100'}`}>
       <header className={`p-4 flex justify-between items-center ${theme === 'dark' ? 'bg-[#1A1A1A] shadow-lg shadow-purple-500/10' : 'bg-white shadow-md'}`}>
         <div className="flex items-center gap-3">
-          <Image
-            src="/logo.png"
-            alt="PurpleBot Logo"
-            width={40}
-            height={40}
-          />
+          <Image src="/logo.png" alt="PurpleBot Logo" width={40} height={40}/>
           <h1 className={`text-2xl font-bold ${theme === 'dark' ? 'text-[#CC66DA]' : 'text-[#9929EA]'}`}>PurpleBot</h1>
         </div>
         <ThemeToggle theme={theme} setTheme={setTheme} />
       </header>
-      <main className="flex-1 overflow-y-auto p-2 md:p-4">
+      <main className="flex-1 overflow-y-auto p-4 md:p-6">
         <div className="space-y-6">
           {messages.map((msg, index) => (
             <div key={index} className={`flex items-start gap-4 ${msg.role === 'user' ? 'justify-end' : ''}`}>
               {msg.role === 'assistant' && <BotIcon />}
-              <div className={`max-w-xl p-4 rounded-2xl shadow-sm ${msg.role === 'user'
-                  ? 'bg-[#9929EA] text-white rounded-br-none'
-                  : theme === 'dark'
-                    ? 'bg-[#1A1A1A] text-[#FAEB92] rounded-tl-none'
+              <div className={`max-w-xl p-4 rounded-2xl shadow-sm ${
+                msg.role === 'user' 
+                  ? 'bg-[#9929EA] text-white rounded-br-none' 
+                  : theme === 'dark' 
+                    ? 'bg-[#1A1A1A] text-[#FAEB92] rounded-tl-none' 
                     : 'bg-white text-[#000000] rounded-tl-none'
-                }`}>
+              }`}>
                 {msg.fileInfo && (
-                  <div className={`mb-2 p-2 border rounded-lg text-sm ${theme === 'dark' ? 'border-purple-800 bg-[#CC66DA] text-[#000000]' : 'border-purple-200 bg-purple-100 text-purple-800'}`}>
-                    <p className="font-bold truncate">{msg.fileInfo.name}</p>
-                    <p className={`text-xs ${theme === 'dark' ? 'opacity-80' : ''}`}>{msg.fileInfo.type}</p>
-                  </div>
+                    <div className={`mb-2 p-2 border rounded-lg text-sm ${theme === 'dark' ? 'border-purple-800 bg-[#CC66DA] text-[#000000]' : 'border-purple-200 bg-purple-100 text-purple-800'}`}>
+                        <p className="font-bold truncate">{msg.fileInfo.name}</p>
+                        <p className={`text-xs ${theme === 'dark' ? 'opacity-80' : ''}`}>{msg.fileInfo.type}</p>
+                    </div>
                 )}
                 {msg.role === 'assistant' ? <MarkdownRenderer content={msg.content} /> : <p className="whitespace-pre-wrap">{msg.content}</p>}
               </div>
@@ -294,91 +290,52 @@ export default function Home(): React.ReactElement {
           ))}
 
           {isLoading && (
-            <div className="flex items-start gap-4">
-              <BotIcon />
-              <div className={`max-w-xl p-4 rounded-2xl shadow-sm rounded-tl-none ${theme === 'dark' ? 'bg-[#1A1A1A]' : 'bg-white'}`}>
-                <div className={`flex items-center space-x-2 font-medium ${theme === 'dark' ? 'text-[#CC66DA]' : 'text-[#9929EA]'}`}>
-                  <span>{loadingText}</span>
-                  <div className={`w-2 h-2 rounded-full animate-pulse ${theme === 'dark' ? 'bg-[#CC66DA]' : 'bg-[#9929EA]'}`}></div>
-                  <div className={`w-2 h-2 rounded-full animate-pulse [animation-delay:0.2s] ${theme === 'dark' ? 'bg-[#CC66DA]' : 'bg-[#9929EA]'}`}></div>
-                  <div className={`w-2 h-2 rounded-full animate-pulse [animation-delay:0.4s] ${theme === 'dark' ? 'bg-[#CC66DA]' : 'bg-[#9929EA]'}`}></div>
-                </div>
-              </div>
-            </div>
+             <div className="flex items-start gap-4">
+               <BotIcon />
+               <div className={`max-w-xl p-4 rounded-2xl shadow-sm rounded-tl-none ${theme === 'dark' ? 'bg-[#1A1A1A]' : 'bg-white'}`}>
+                 <div className={`flex items-center space-x-2 font-medium ${theme === 'dark' ? 'text-[#CC66DA]' : 'text-[#9929EA]'}`}>
+                    <span>{loadingText}</span>
+                    <div className={`w-2 h-2 rounded-full animate-pulse ${theme === 'dark' ? 'bg-[#CC66DA]' : 'bg-[#9929EA]'}`}></div>
+                    <div className={`w-2 h-2 rounded-full animate-pulse [animation-delay:0.2s] ${theme === 'dark' ? 'bg-[#CC66DA]' : 'bg-[#9929EA]'}`}></div>
+                    <div className={`w-2 h-2 rounded-full animate-pulse [animation-delay:0.4s] ${theme === 'dark' ? 'bg-[#CC66DA]' : 'bg-[#9929EA]'}`}></div>
+                 </div>
+               </div>
+             </div>
           )}
           <div ref={chatEndRef} />
         </div>
       </main>
       <footer className={`p-4 ${theme === 'dark' ? 'bg-[#1A1A1A] border-t border-slate-800' : 'bg-white border-t'}`}>
         {file && (
-          <div className={`max-w-2xl mx-auto mb-2 flex justify-between items-center p-2 rounded-lg text-sm ${theme === 'dark' ? 'bg-[#CC66DA] text-[#000000]' : 'bg-[#FAEB92] text-[#000000]'}`}>
-            <div className="truncate">
-              <p className="font-bold truncate">{file.name}</p>
-              <p className={`text-xs ${theme === 'dark' ? 'text-slate-800' : 'text-slate-600'}`}>{getFriendlyFileType(file.type)}</p>
+            <div className={`max-w-2xl mx-auto mb-2 flex justify-between items-center p-2 rounded-lg text-sm ${theme === 'dark' ? 'bg-[#CC66DA]' : 'bg-[#FAEB92]'}`}>
+                <div className="truncate">
+                    <p className={`font-bold truncate ${theme === 'dark' ? 'text-[#000000]' : 'text-[#000000]'}`}>{file.name}</p>
+                    <p className={`text-xs ${theme === 'dark' ? 'text-slate-800' : 'text-slate-600'}`}>{getFriendlyFileType(file.type)}</p>
+                </div>
+                <button onClick={handleRemoveFile} className={`p-1 font-bold text-lg ${theme === 'dark' ? 'text-slate-800 hover:text-red-500' : 'text-slate-600 hover:text-red-500'}`} aria-label="Remove file">&times;</button>
             </div>
-            <button
-              onClick={handleRemoveFile}
-              className={`p-1 font-bold text-lg ${theme === 'dark' ? 'text-slate-800 hover:text-red-500' : 'text-slate-600 hover:text-red-500'}`}
-              aria-label="Remove file"
-            >
-              &times;
-            </button>
-          </div>
         )}
         <div className="flex items-center gap-3 max-w-2xl mx-auto">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            className="hidden"
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isLoading || !!file}
-            className={`p-3 rounded-lg transition-colors duration-200 ${theme === 'dark' ? 'bg-[#9929EA] disabled:bg-[#5c4069] disabled:text-slate-400 hover:bg-[#8A25D1]' : 'bg-[#9929EA] disabled:bg-[#CC66DA] hover:bg-[#8A25D1]'}`}
-            aria-label="Attach file"
-          >
+          <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden"/>
+          <button onClick={() => fileInputRef.current?.click()} disabled={isLoading || !!file} className={`p-3 rounded-lg transition-colors duration-200 ${theme === 'dark' ? 'bg-[#9929EA] disabled:bg-[#5c4069] disabled:text-slate-400 hover:bg-[#8A25D1]' : 'bg-[#9929EA] disabled:bg-[#CC66DA] hover:bg-[#8A25D1]'}`}>
             <PaperClipIcon />
           </button>
-          <textarea
-            value={userInput}
-            onChange={(e) => setUserInput(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="Type your message or use the microphone..."
-            className={`flex-1 p-3 border rounded-lg resize-none focus:ring-2 focus:outline-none ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white focus:ring-[#9929EA] placeholder-slate-400' : 'bg-white border-slate-300 text-black focus:ring-[#9929EA] placeholder-slate-500'}`}
-            rows={1}
-            disabled={isLoading}
-          />
-          <button
-            onClick={handleVoiceRecording}
-            disabled={isLoading}
-            className={`p-3 rounded-lg transition-colors duration-200 ${isRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-[#9929EA] hover:bg-[#8A25D1]'}`}
-          >
+          <textarea value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyPress={handleKeyPress} placeholder="Type your message or use the microphone..." className={`flex-1 p-3 border rounded-lg resize-none focus:ring-2 focus:outline-none ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white focus:ring-[#9929EA]' : 'bg-white border-slate-300 text-black focus:ring-[#9929EA]'}`} rows={1} disabled={isLoading}/>
+          <button onClick={handleVoiceRecording} disabled={isLoading} className={`p-3 rounded-lg transition-colors duration-200 ${isRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-[#9929EA] hover:bg-[#8A25D1]'}`}>
             <MicIcon isRecording={isRecording} />
           </button>
-
           {isLoading ? (
-            <button
-              onClick={handleStopGeneration}
-              className="p-3 bg-red-500 rounded-lg hover:bg-red-600 transition-colors duration-200"
-              aria-label="Stop generation"
-            >
-              <StopIcon />
+            <button onClick={handleStopGeneration} className="p-3 bg-red-500 rounded-lg hover:bg-red-600 transition-colors duration-200" aria-label="Stop generation">
+                <StopIcon />
             </button>
           ) : (
-            <button
-              onClick={handleSendMessage}
-              disabled={!userInput.trim() && !file}
-              className={`p-3 rounded-lg transition-colors duration-200 ${theme === 'dark' ? 'bg-[#9929EA] disabled:bg-[#5c4069] disabled:text-slate-400 hover:bg-[#8A25D1]' : 'bg-[#9929EA] disabled:bg-[#CC66DA] hover:bg-[#8A25D1]'}`}
-              aria-label="Send message"
-            >
-              <SendIcon />
+            <button onClick={handleSendMessage} disabled={!userInput.trim() && !file} className={`p-3 rounded-lg transition-colors duration-200 ${theme === 'dark' ? 'bg-[#9929EA] disabled:bg-[#5c4069] disabled:text-slate-400 hover:bg-[#8A25D1]' : 'bg-[#9929EA] disabled:bg-[#CC66DA] hover:bg-[#8A25D1]'}`}>
+                <SendIcon />
             </button>
           )}
-
         </div>
         <div className={`text-center text-xs mt-2 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
-          <p>Don&apos;t trust Purple blindly. It may generate false results.</p>
+          <p>Don&apos;t trust Gem blindly. It may generate false results.</p>
         </div>
       </footer>
     </div>
