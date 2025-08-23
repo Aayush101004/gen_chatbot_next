@@ -4,14 +4,6 @@ import mammoth from 'mammoth';
 import { NextRequest, NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
 
-export const config = {
-    api: {
-        bodyParser: {
-            sizeLimit: '15mb',
-        },
-    },
-};
-
 // This is the same retry helper we use elsewhere
 async function fetchWithRetry(url: string, options: RequestInit, retries = 3) {
     for (let attempt = 0; attempt < retries; attempt++) {
@@ -39,15 +31,6 @@ export async function POST(request: NextRequest) {
 
         if (!file || !prompt) {
             return NextResponse.json({ error: 'Missing file or prompt.' }, { status: 400 });
-        }
-
-        // --- THIS IS THE FIX ---
-        // Check the file size before processing. 10MB in bytes.
-        if (file.size > 15 * 1024 * 1024) {
-            return NextResponse.json(
-                { error: 'File size should be less than 10 MB.' },
-                { status: 413 } // 413 is the status code for "Payload Too Large"
-            );
         }
 
         const fileBuffer = await file.arrayBuffer();
