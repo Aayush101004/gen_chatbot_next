@@ -11,7 +11,6 @@ import StopIcon from './components/StopIcon';
 import ThemeToggle from './components/ThemeToggle';
 import UserIcon from './components/UserIcon';
 
-
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
@@ -26,16 +25,16 @@ export default function Home(): React.ReactElement {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
-
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-
   const [loadingText, setLoadingText] = useState<string>('Processing');
   const abortControllerRef = useRef<AbortController | null>(null);
+
   const [file, setFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [showSizeErrorModal, setShowSizeErrorModal] = useState<boolean>(false);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -95,10 +94,7 @@ export default function Home(): React.ReactElement {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    const newMessage: ChatMessage = {
-      role: 'user',
-      content: userInput,
-    };
+    const newMessage: ChatMessage = { role: 'user', content: userInput };
     if (file) {
       newMessage.fileInfo = { name: file.name, type: getFriendlyFileType(file.type) };
     }
@@ -106,23 +102,20 @@ export default function Home(): React.ReactElement {
     const newMessages = [...messages, newMessage];
     setMessages(newMessages);
 
-    const currentFile = file;
-    const currentInput = userInput;
+    if (file) setLoadingText('Analyzing');
+    else setLoadingText('Processing');
 
-    if (currentFile) {
-      setLoadingText('Analyzing');
-    } else {
-      setLoadingText('Processing');
-    }
-
-    // Clear the inputs from the UI immediately
-    setUserInput('');
-    setFile(null);
     setIsLoading(true);
 
     let botResponse = "";
 
     try {
+      const currentFile = file;
+      const currentInput = userInput;
+
+      setUserInput('');
+      setFile(null);
+
       if (currentFile) {
         const formData = new FormData();
         formData.append('file', currentFile);
@@ -135,9 +128,7 @@ export default function Home(): React.ReactElement {
         });
 
         const result = await response.json();
-        if (!response.ok) {
-          throw new Error(result.error || 'File analysis failed.');
-        }
+        if (!response.ok) throw new Error(result.error || 'File analysis failed.');
         botResponse = result.analysis;
 
       } else {
@@ -168,7 +159,9 @@ export default function Home(): React.ReactElement {
           botResponse = result.candidates[0].content.parts[0].text.trim();
         }
       }
+
       setMessages(prev => [...prev, { role: 'assistant', content: botResponse }]);
+
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         setMessages(prev => [...prev, { role: 'assistant', content: "Response interrupted." }]);
@@ -198,7 +191,19 @@ export default function Home(): React.ReactElement {
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      setFile(e.target.files[0]);
+      const selectedFile = e.target.files[0];
+
+      const MAX_FILE_SIZE = 4.5 * 1024 * 1024;
+
+      if (selectedFile.size > MAX_FILE_SIZE) {
+        setShowSizeErrorModal(true);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        return;
+      }
+
+      setFile(selectedFile);
     }
   };
 
@@ -258,6 +263,22 @@ export default function Home(): React.ReactElement {
 
   return (
     <div className={`flex flex-col h-screen font-sans ${theme === 'dark' ? 'bg-[#000000]' : 'bg-slate-100'}`}>
+
+      {showSizeErrorModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className={`p-6 rounded-lg shadow-xl max-w-sm text-center ${theme === 'dark' ? 'bg-slate-800 text-white' : 'bg-white text-black'}`}>
+            <h3 className="text-xl font-bold mb-4">File Too Large</h3>
+            <p className="mb-6">Please select a file that is less than 4.5 MB.</p>
+            <button
+              onClick={() => setShowSizeErrorModal(false)}
+              className={`px-4 py-2 rounded-lg font-semibold transition-colors ${theme === 'dark' ? 'bg-[#9929EA] hover:bg-[#8A25D1] text-white' : 'bg-[#9929EA] hover:bg-[#8A25D1] text-white'}`}
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
       <header className={`p-4 flex justify-between items-center ${theme === 'dark' ? 'bg-[#1A1A1A] shadow-lg shadow-purple-500/10' : 'bg-white shadow-md'}`}>
         <div className="flex items-center gap-3">
           <Image src="/logo.png" alt="PurpleBot Logo" width={40} height={40} />
@@ -319,7 +340,16 @@ export default function Home(): React.ReactElement {
           <button onClick={() => fileInputRef.current?.click()} disabled={isLoading || !!file} className={`p-3 rounded-lg transition-colors duration-200 ${theme === 'dark' ? 'bg-[#9929EA] disabled:bg-[#5c4069] disabled:text-slate-400 hover:bg-[#8A25D1]' : 'bg-[#9929EA] disabled:bg-[#CC66DA] hover:bg-[#8A25D1]'}`}>
             <PaperClipIcon />
           </button>
-          <textarea value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyPress={handleKeyPress} placeholder="Type your message or use the microphone..." className={`flex-1 p-3 border rounded-lg resize-none focus:ring-2 focus:outline-none ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white focus:ring-[#9929EA] placeholder-slate-400' : 'bg-white border-slate-300 text-black focus:ring-[#9929EA] placeholder-slate-500'}`} rows={1} disabled={isLoading} />
+          <textarea
+            key={theme} // This key forces a re-render on theme change
+            value={userInput}
+            onChange={(e) => setUserInput(e.target.value)}
+            onKeyPress={handleKeyPress}
+            placeholder="Type your message or use the microphone..."
+            className={`flex-1 p-3 border rounded-lg resize-none focus:ring-2 focus:outline-none ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-white focus:ring-[#9929EA] placeholder-slate-400' : 'bg-white border-slate-300 text-black focus:ring-[#9929EA] placeholder-slate-500'}`}
+            rows={1}
+            disabled={isLoading}
+          />
           <button onClick={handleVoiceRecording} disabled={isLoading} className={`p-3 rounded-lg transition-colors duration-200 ${isRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-[#9929EA] hover:bg-[#8A25D1]'}`}>
             <MicIcon isRecording={isRecording} />
           </button>
