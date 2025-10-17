@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
         const audioBase64 = Buffer.from(audioBuffer).toString('base64');
     
         // Using the flash model as requested
-        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
 
         const payload = {
             contents: [

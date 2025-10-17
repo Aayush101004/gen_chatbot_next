@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
             // Combine the user's prompt with the extracted text
             const combinedPrompt = `Based on the following document content, please answer the user's question.\n\n---\nDOCUMENT CONTENT:\n${extractedText}\n---\n\nUSER'S QUESTION: "${prompt}"`;
 
-            const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+            const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
             const payload = { contents: [{ parts: [{ text: combinedPrompt }] }] };
 
             const response = await fetchWithRetry(API_URL, {
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
         } else {
             // --- HANDLE OTHER FILES (Images, PDFs, etc.): Send file directly to a multimodal model ---
             const fileBase64 = nodeBuffer.toString('base64');
-            const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+            const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
             
             const payload = {
                 contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: file.type, data: fileBase64 } }] }],
