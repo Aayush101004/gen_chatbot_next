@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
         const { history }: { history: ChatMessage[] } = await request.json();
 
         const apiKey = process.env.GEMINI_API_KEY;
-        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
         
         if (!apiKey) {
             return NextResponse.json({ error: 'Gemini API key not configured on server.' }, { status: 500 });
